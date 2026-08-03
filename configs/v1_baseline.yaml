@@ -1,0 +1,62 @@
+# V1 SimMIM baseline config
+# Rebuild from docs/Plan.md §2.5 + docs/summary.md §5
+# Original server: 2x RTX 4090 (DDP, batch 16/GPU). This server: 1x GPU.
+# `effective_batch_size` is the goal; the launcher computes per-GPU batch.
+
+model:
+  name: google/gemma-4-E2B
+  local_dir: /home/vipuser/models/gemma-4-E2B
+  vision_tower_submodule: model.vision_tower     # ckpt prefix
+  projector_submodule: model.embed_vision        # downstream, unused in stage-1
+  disable_qat_clipped_linears: true              # post-load; see Plan §2.3
+  dtype: bfloat16
+
+data:
+  train_list: /home/vipuser/gemmav4_2026-07-09/data/train.txt
+  val_list:   /home/vipuser/gemmav4_2026-07-09/data/val.txt
+  image_root_default: /home/vipuser/data         # paths are absolute in lists
+  max_soft_tokens: 70                            # processor N_max = 630 raw patches
+  pooling_kernel_size: 9                         # 3x3 average pool
+  num_workers: 8
+  pin_memory: true
+
+mask:
+  ratio: 0.6
+  granularity: block                             # Plan §2.2 step 2
+  block_size: 8                                  # 8x8 patch block, see summary §5
+  strategy: block_then_pad                       # mask only valid (non-pad) patches
+
+optim:
+  name: AdamW
+  lr_top: 2.0e-4                                 # bs=32 -> linear-scaled from bs=16/1e-4 (Plan §2.5)
+  llrd: 0.75                                     # multiplicative decay per layer
+  weight_decay: 0.05
+  betas: [0.9, 0.999]
+  warmup_frac: 0.10                              # linear warmup over first 10%
+  schedule: cosine                               # cosine decay to 0
+  grad_clip: 1.0
+
+train:
+  effective_batch_size: 32                       # A100 80GB single-GPU; matches original 2x4090 DDP recipe
+  epochs: 3
+  precision: bf16                                # autocast; fp32 reduction in optimizer state
+  gradient_checkpointing: false                  # not supported in transformers 5.13 per summary §7.5
+  log_every: 50
+  val_every_epoch: true
+  save_best_on: val_loss                         # track val_loss; save best.pt
+  ckpt_dir: /home/vipuser/gemmav4_2026-07-09/checkpoints/v1_baseline
+  log_dir:  /home/vipuser/gemmav4_2026-07-09/logs/v1_baseline
+
+loss:
+  reconstruction: l1                             # L1 in [-1,1] space, on 256-dim single-channel slice
+  target_slice: channel0                         # pixel_values[..., ::3] -> 256 dim per patch
+  target_rescale: "2*(x-0.5)"                    # matches patch_embedder scaling; see Plan §2.2 step 4
+
+decoder:
+  type: linear                                   # V1 baseline: Linear(768->256)
+  hidden_dim: null                               # if MLP/transformer
+  num_layers: 1
+
+repro:
+  seed: 42
+  deterministic: false                           # speed > strict reproducibility for V1
