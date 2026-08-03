@@ -1,0 +1,19 @@
+# Intentionally excluded from the repo (see README "Layout")
+checkpoints/
+outputs/
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Jupyter / IDE
+.ipynb_checkpoints/
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
