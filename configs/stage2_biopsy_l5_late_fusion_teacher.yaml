@@ -1,0 +1,48 @@
+# Stage-2 · L5 BIOPSY — late fusion with teacher (un-SSL'd) features
+#
+# Direct ablation of L2 biopsy: same architecture + same clinical + same
+# data, but image features come from the original Gemma-4 E2B (no SimMIM).
+# Per Plan §S7: this is the "SSL-in-fusion" probe.
+#
+# Ship gate: L2_biopsy − L5_biopsy ≥ +0.005 on ≥3/4 outcomes.
+
+train:
+  epochs: 30
+  batch_size: 64
+  patience: 5
+  seed: 42
+  warmup_frac: 0.05
+  logit_pool: per_patient_logit_mean
+
+model:
+  run: l5_biopsy
+  kind: late_fusion
+  features_npy: features/teacher_stage2_biopsy.npy      # ← ONLY difference from L2 biopsy
+  meta_parquet: features/teacher_stage2_biopsy_meta.parquet
+  image_proj_dim: 256
+  clinical_proj_dim: 64
+  fusion_mlp_hidden: 128
+  dropout: 0.3
+
+optim:
+  name: AdamW
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  betas: [0.9, 0.999]
+
+loss:
+  kind: bce_logits
+  pos_weight: per_outcome_neg_over_pos
+
+data:
+  cohort: data/stage2_cohort_biopsy.parquet
+  folds:  data/stage2_folds_biopsy.json
+  outcome_cols: [outcome1, outcome2, outcome3, outcome4]
+  clinical_cols: con_val_alt..con_val_utp
+
+eval:
+  scope: patient
+  threshold: 0.5
+
+checkpoints:
+  out_dir: checkpoints/stage2_biopsy_l5
