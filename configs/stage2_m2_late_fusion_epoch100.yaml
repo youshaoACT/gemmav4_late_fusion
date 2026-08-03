@@ -1,0 +1,49 @@
+# Stage-2 · L2 — late fusion: V1 image mean + clinical MLP
+#
+# Per Plan §S5.4. Image per-patch → img embed (768→256, ReLU, dropout),
+# patient-level mean pool; clinical embed (d_clin→64, ReLU, dropout);
+# concat (320) → MLP(320→128→ReLU→Dropout→4). M2 family.
+#
+# Usage:
+#   python scripts/stage2_train.py --config configs/stage2_m2_late_fusion.yaml
+
+train:
+  epochs: 100
+  batch_size: 64
+  patience: 5
+  seed: 42
+  warmup_frac: 0.05
+  logit_pool: per_patient_logit_mean       # flat concat + scatter_mean per Plan §S6
+
+model:
+  run: l2
+  kind: late_fusion
+  features_npy: features/v1_stage2.npy
+  meta_parquet: features/v1_stage2_meta.parquet
+  image_proj_dim: 256
+  clinical_proj_dim: 64
+  fusion_mlp_hidden: 128
+  dropout: 0.3
+
+optim:
+  name: AdamW
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  betas: [0.9, 0.999]
+
+loss:
+  kind: bce_logits
+  pos_weight: per_outcome_neg_over_pos
+
+data:
+  cohort: data/stage2_cohort.parquet
+  folds:  data/stage2_folds.json
+  outcome_cols: [outcome1, outcome2, outcome3, outcome4]
+  clinical_cols: con_val_1..con_val_44
+
+eval:
+  scope: patient
+  threshold: 0.5
+
+checkpoints:
+  out_dir: checkpoints/stage2_l2_epoch100
